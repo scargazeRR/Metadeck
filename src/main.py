@@ -1,8 +1,6 @@
+
 """
-Metadeck - MEGA32U4 Deck Controller
-Professional Edition v1.3.7 - COMPLETELY FIXED
-Copyright (c) 2026 ScargazeRR - Metadeck
-Fixes: Encoder fast (no debounce), All keys work, Tray, Config next to EXE
+Metadeck v1.3.9 
 """
 
 import os
@@ -18,23 +16,25 @@ import customtkinter as ctk
 try:
     import keyboard as keyboard_lib
     KEYBOARD_AVAILABLE = True
-except ImportError:
+except:
     KEYBOARD_AVAILABLE = False
 
 try:
-    from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
+    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+    from comtypes import CLSCTX_ALL
+    from ctypes import cast, POINTER
     PYCAW_AVAILABLE = True
-except ImportError:
+except:
     PYCAW_AVAILABLE = False
 
 try:
     import pystray
     from PIL import Image
     TRAY_AVAILABLE = True
-except ImportError:
+except:
     TRAY_AVAILABLE = False
 
-CURRENT_VERSION = "1.3.7"
+CURRENT_VERSION = "1.3.9"
 COMPANY_NAME = "ScargazeRR"
 PRODUCT_NAME = "Metadeck"
 
@@ -42,10 +42,9 @@ if getattr(sys, 'frozen', False):
     BASE_DIR = Path(sys.executable).parent
 else:
     BASE_DIR = Path(__file__).parent.parent if "src" in str(Path(__file__).parent) else Path(__file__).parent
-
 CONFIG_FILE = BASE_DIR / "config.json"
 
-ACTIONS: Dict[str, Tuple[str, str]] = {
+ACTIONS = {
     "none": ("None", "System"),
     "yt_volume_down": ("YouTube Volume Down", "YouTube"),
     "yt_volume_up": ("YouTube Volume Up", "YouTube"),
@@ -66,66 +65,57 @@ ACTIONS: Dict[str, Tuple[str, str]] = {
 
 def get_action_color(action_key: str) -> str:
     _, category = ACTIONS.get(action_key, ("", "System"))
-    return {
-        "YouTube": "#DC2626",
-        "System": "#2563EB",
-        "Media": "#7C3AED",
-        "Custom": "#059669"
-    }.get(category, "#2B2B2B")
+    return {"YouTube": "#DC2626", "System": "#2563EB", "Media": "#7C3AED", "Custom": "#059669"}.get(category, "#2B2B2B")
 
 class AudioExecutor:
     def execute(self, action: str, param: str = "") -> bool:
-        try:
-            # YouTube / System Volume - IMMER mit Fallback
-            if action in ["yt_volume_down", "yt_volume_up", "yt_mute", "system_volume_down", "system_volume_up", "system_mute"]:
-                # Versuche erst Browser (YouTube)
-                if PYCAW_AVAILABLE and action.startswith("yt_"):
-                    try:
-                        sessions = AudioUtilities.GetAllSessions()
-                        for session in sessions:
-                            if session.Process and any(n in session.Process.name().lower() for n in ["chrome", "msedge", "firefox", "brave", "opera"]):
-                                vol = session._ctl.QueryInterface(ISimpleAudioVolume)
-                                cur = vol.GetMasterVolume()
-                                if action in ["yt_volume_down", "system_volume_down"]:
-                                    vol.SetMasterVolume(max(0.0, cur - 0.05), None)
-                                elif action in ["yt_volume_up", "system_volume_up"]:
-                                    vol.SetMasterVolume(min(1.0, cur + 0.05), None)
-                                elif action in ["yt_mute", "system_mute"]:
-                                    vol.SetMute(not vol.GetMute(), None)
-                                return True
-                    except:
-                        pass
-                
-                # FALLBACK: System Volume - geht immer, auch ohne Browser!
-                if KEYBOARD_AVAILABLE:
-                    if action in ["yt_volume_down", "system_volume_down"]:
+        if "volume_down" in action or "volume_up" in action or "mute" in action:
+            if PYCAW_AVAILABLE:
+                try:
+                    devices = AudioUtilities.GetSpeakers()
+                    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+                    volume = cast(interface, POINTER(IAudioEndpointVolume))
+                    current = volume.GetMasterVolumeLevelScalar()
+                    if "down" in action:
+                        volume.SetMasterVolumeLevelScalar(max(0.0, current - 0.05), None)
+                    elif "up" in action:
+                        volume.SetMasterVolumeLevelScalar(min(1.0, current + 0.05), None)
+                    elif "mute" in action:
+                        volume.SetMute(not volume.GetMute(), None)
+                    return True
+                except Exception as e:
+                    print(f"Volume API error: {e}")
+            if KEYBOARD_AVAILABLE:
+                try:
+                    if "down" in action:
                         keyboard_lib.send("volume down")
-                    elif action in ["yt_volume_up", "system_volume_up"]:
+                    elif "up" in action:
                         keyboard_lib.send("volume up")
-                    elif action in ["yt_mute", "system_mute"]:
+                    elif "mute" in action:
                         keyboard_lib.send("volume mute")
                     return True
-                return False
-
-            if not KEYBOARD_AVAILABLE:
-                return False
-
-            if action in ["yt_play_pause", "media_play_pause"]:
-                keyboard_lib.send("play/pause media")
-            elif action in ["yt_next", "media_next"]:
-                keyboard_lib.send("next track")
-            elif action in ["yt_previous", "media_previous"]:
-                keyboard_lib.send("previous track")
-            elif action == "custom_key" and param:
-                keyboard_lib.send(param)
-            elif action == "custom_text" and param:
-                keyboard_lib.write(param)
-            elif action == "open_url" and param:
-                webbrowser.open(param)
-            return True
-        except Exception as e:
-            print(f"Execution error [{action}]: {e}")
+                except:
+                    pass
             return False
+        if KEYBOARD_AVAILABLE:
+            try:
+                if action in ["yt_play_pause", "media_play_pause"]:
+                    keyboard_lib.send("play/pause media")
+                elif action in ["yt_next", "media_next"]:
+                    keyboard_lib.send("next track")
+                elif action in ["yt_previous", "media_previous"]:
+                    keyboard_lib.send("previous track")
+                elif action == "custom_key" and param:
+                    keyboard_lib.send(param)
+                elif action == "custom_text" and param:
+                    keyboard_lib.write(param)
+                elif action == "open_url" and param:
+                    webbrowser.open(param)
+                return True
+            except Exception as e:
+                print(f"Key error: {e}")
+                return False
+        return False
 
 class ConfigManager:
     @staticmethod
@@ -152,125 +142,122 @@ class ConfigManager:
 class MetadeckApplication(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title(f"{PRODUCT_NAME} v{CURRENT_VERSION} - MEGA32U4 Controller")
+        self.title(f"{PRODUCT_NAME} v{CURRENT_VERSION}")
         self.geometry("1320x820")
-        self.minsize(1200, 700)
-        self._set_application_icon()
+        self._set_icon()
         self.config_data = ConfigManager.load()
         self.selected_slot = "0"
-        self.hotkey_map: Dict[str, Tuple[str, str]] = {}
+        self.hotkey_map = {}
         self.is_listening = False
-        self.tray_icon: Optional[pystray.Icon] = None
+        self.tray_icon = None
         self.executor = AudioExecutor()
         self.protocol("WM_DELETE_WINDOW", self.minimize_to_tray)
         self._create_ui()
         self._rebuild_hotkey_map()
         self._start_hotkey_listener()
 
-    def _set_application_icon(self) -> None:
+    def _set_icon(self):
         try:
-            for p in ["assets/MetaStreamdeck.ico", "assets/Metadeck.ico", "MetaStreamdeck.ico", str(BASE_DIR / "assets" / "MetaStreamdeck.ico")]:
+            for p in ["assets/MetaStreamdeck.ico", str(BASE_DIR / "assets" / "MetaStreamdeck.ico")]:
                 if os.path.exists(p):
                     self.iconbitmap(p)
                     break
         except:
             pass
 
-    def _create_ui(self) -> None:
+    def _create_ui(self):
         header = ctk.CTkFrame(self, fg_color="#151515", height=56, corner_radius=0)
         header.pack(fill="x")
         ctk.CTkLabel(header, text=PRODUCT_NAME, font=("Segoe UI", 20, "bold")).pack(side="left", padx=20, pady=10)
-        ctk.CTkLabel(header, text=f"v{CURRENT_VERSION} | MEGA32U4 Controller | Press to Assign | Encoder Fast", font=("Segoe UI", 11), text_color="#888888").pack(side="left", padx=10)
-        ctk.CTkLabel(header, text=COMPANY_NAME, font=("Segoe UI", 11), text_color="#666666").pack(side="right", padx=20)
+        ctk.CTkLabel(header, text=f"v{CURRENT_VERSION} | JUST WORKS | Encoder Fast | All Keys Work", font=("Segoe UI", 11), text_color="#888888").pack(side="left", padx=10)
 
-        main_container = ctk.CTkFrame(self, fg_color="#0A0A0A")
-        main_container.pack(fill="both", expand=True, padx=6, pady=6)
+        main = ctk.CTkFrame(self, fg_color="#0A0A0A")
+        main.pack(fill="both", expand=True, padx=6, pady=6)
 
-        left_panel = ctk.CTkFrame(main_container, fg_color="#111111", corner_radius=12)
-        left_panel.pack(side="left", fill="both", expand=True, padx=6, pady=6)
+        left = ctk.CTkFrame(main, fg_color="#111111", corner_radius=12)
+        left.pack(side="left", fill="both", expand=True, padx=6, pady=6)
 
-        grid_section = ctk.CTkFrame(left_panel, fg_color="#161616", corner_radius=10)
-        grid_section.pack(fill="x", padx=12, pady=10)
-        ctk.CTkLabel(grid_section, text="MAIN DECK (10 x 2) - 20 Keys", font=("Segoe UI", 11, "bold"), text_color="#777777").pack(anchor="w", padx=12, pady=(8,4))
-        grid_frame = ctk.CTkFrame(grid_section, fg_color="transparent")
-        grid_frame.pack(padx=8, pady=8)
+        grid_sec = ctk.CTkFrame(left, fg_color="#161616", corner_radius=10)
+        grid_sec.pack(fill="x", padx=12, pady=10)
+        ctk.CTkLabel(grid_sec, text="MAIN DECK (10 x 2)", font=("Segoe UI", 11, "bold"), text_color="#777777").pack(anchor="w", padx=12, pady=5)
+        grid_f = ctk.CTkFrame(grid_sec, fg_color="transparent")
+        grid_f.pack(padx=8, pady=8)
 
-        self.deck_buttons: Dict[str, ctk.CTkButton] = {}
+        self.buttons = {}
         for row in range(2):
-            row_frame = ctk.CTkFrame(grid_frame, fg_color="transparent")
-            row_frame.pack(pady=2)
+            row_f = ctk.CTkFrame(grid_f, fg_color="transparent")
+            row_f.pack(pady=2)
             for col in range(10):
-                idx = row * 10 + col
-                slot_id = str(idx)
-                cfg = self.config_data.get(slot_id, {})
-                btn = ctk.CTkButton(row_frame, text=self._format_button_text(cfg), width=108, height=108, corner_radius=16, fg_color=cfg.get("color", "#2B2B2B"), font=("Segoe UI", 10, "bold"), command=lambda s=slot_id: self.select_slot(s))
+                idx = row*10+col
+                sid = str(idx)
+                cfg = self.config_data.get(sid, {})
+                btn = ctk.CTkButton(row_f, text=self._fmt(cfg), width=108, height=108, corner_radius=16, fg_color=cfg.get("color", "#2B2B2B"), font=("Segoe UI", 10, "bold"), command=lambda s=sid: self.select_slot(s))
                 btn.pack(side="left", padx=3, pady=3)
-                self.deck_buttons[slot_id] = btn
+                self.buttons[sid] = btn
 
-        encoder_section = ctk.CTkFrame(left_panel, fg_color="#161616", corner_radius=10)
-        encoder_section.pack(fill="x", padx=12, pady=6)
-        ctk.CTkLabel(encoder_section, text="ENCODER CONTROLS - Fast (No Debounce for Left/Right)", font=("Segoe UI", 11, "bold"), text_color="#777777").pack(anchor="w", padx=12, pady=(8,4))
-        encoder_frame = ctk.CTkFrame(encoder_section, fg_color="transparent")
-        encoder_frame.pack(padx=8, pady=8)
-        for slot_id in ["20", "21", "22"]:
-            cfg = self.config_data.get(slot_id, {})
-            btn = ctk.CTkButton(encoder_frame, text=self._format_button_text(cfg), width=140, height=58, corner_radius=10, fg_color=cfg.get("color", "#1E40AF"), command=lambda s=slot_id: self.select_slot(s))
+        enc_sec = ctk.CTkFrame(left, fg_color="#161616", corner_radius=10)
+        enc_sec.pack(fill="x", padx=12, pady=6)
+        ctk.CTkLabel(enc_sec, text="ENCODER - Fast, No Debounce", font=("Segoe UI", 11, "bold"), text_color="#777777").pack(anchor="w", padx=12, pady=5)
+        enc_f = ctk.CTkFrame(enc_sec, fg_color="transparent")
+        enc_f.pack(padx=8, pady=8)
+        for sid in ["20", "21", "22"]:
+            cfg = self.config_data.get(sid, {})
+            btn = ctk.CTkButton(enc_f, text=self._fmt(cfg), width=140, height=58, corner_radius=10, fg_color=cfg.get("color", "#1E40AF"), command=lambda s=sid: self.select_slot(s))
             btn.pack(side="left", padx=6)
-            self.deck_buttons[slot_id] = btn
+            self.buttons[sid] = btn
 
-        self.status_label = ctk.CTkLabel(left_panel, text="Status: Ready - Hotkey listener active (F13-F24) - Run as Admin! - Encoder Fast Mode", font=("Segoe UI", 11), text_color="#22C55E")
+        self.status_label = ctk.CTkLabel(left, text="Status: Ready - JUST WORKS - Run as Admin", font=("Segoe UI", 11), text_color="#22C55E")
         self.status_label.pack(pady=12)
 
-        right_panel = ctk.CTkFrame(main_container, width=360, fg_color="#111111", corner_radius=12)
-        right_panel.pack(side="right", fill="y", padx=6, pady=6)
-        right_panel.pack_propagate(False)
+        right = ctk.CTkFrame(main, width=360, fg_color="#111111", corner_radius=12)
+        right.pack(side="right", fill="y", padx=6, pady=6)
+        right.pack_propagate(False)
 
-        ctk.CTkLabel(right_panel, text="Configuration", font=("Segoe UI", 16, "bold")).pack(pady=14)
-        self.slot_label = ctk.CTkLabel(right_panel, text="Slot: 0", font=("Segoe UI", 13, "bold"), text_color="#FF6F00")
+        ctk.CTkLabel(right, text="Configuration", font=("Segoe UI", 16, "bold")).pack(pady=14)
+        self.slot_label = ctk.CTkLabel(right, text="Slot: 0", font=("Segoe UI", 13, "bold"), text_color="#FF6F00")
         self.slot_label.pack()
 
-        ctk.CTkLabel(right_panel, text="Button Label", font=("Segoe UI", 11), text_color="#777777").pack(anchor="w", padx=16, pady=(14,2))
-        self.entry_label = ctk.CTkEntry(right_panel, placeholder_text="Enter button label", height=38, corner_radius=8)
+        ctk.CTkLabel(right, text="Button Label", font=("Segoe UI", 11), text_color="#777777").pack(anchor="w", padx=16, pady=(14,2))
+        self.entry_label = ctk.CTkEntry(right, placeholder_text="Label", height=38, corner_radius=8)
         self.entry_label.pack(fill="x", padx=16, pady=2)
 
-        ctk.CTkLabel(right_panel, text="Physical Key Assignment", font=("Segoe UI", 11, "bold"), text_color="#777777").pack(anchor="w", padx=16, pady=(16,4))
-        self.key_display = ctk.CTkLabel(right_panel, text="F13", font=("Segoe UI", 26, "bold"), fg_color="#1E1E1E", corner_radius=10, width=328, height=64, text_color="#FF6F00")
+        ctk.CTkLabel(right, text="Physical Key", font=("Segoe UI", 11, "bold"), text_color="#777777").pack(anchor="w", padx=16, pady=(16,4))
+        self.key_display = ctk.CTkLabel(right, text="F13", font=("Segoe UI", 26, "bold"), fg_color="#1E1E1E", corner_radius=10, width=328, height=64, text_color="#FF6F00")
         self.key_display.pack(padx=16, pady=4)
 
-        self.assign_button = ctk.CTkButton(right_panel, text="Press to Assign Key", fg_color="#FF6F00", hover_color="#E65100", height=46, corner_radius=10, font=("Segoe UI", 13, "bold"), command=self.start_key_assignment)
-        self.assign_button.pack(fill="x", padx=16, pady=8)
+        self.assign_btn = ctk.CTkButton(right, text="Press to Assign Key", fg_color="#FF6F00", height=46, corner_radius=10, font=("Segoe UI", 13, "bold"), command=self.start_assign)
+        self.assign_btn.pack(fill="x", padx=16, pady=8)
 
-        ctk.CTkLabel(right_panel, text="Action Type", font=("Segoe UI", 11, "bold"), text_color="#777777").pack(anchor="w", padx=16, pady=(16,4))
-        self.action_combo = ctk.CTkComboBox(right_panel, values=list(ACTIONS.keys()), width=328, height=38, corner_radius=8, command=self.on_action_changed)
+        ctk.CTkLabel(right, text="Action Type", font=("Segoe UI", 11, "bold"), text_color="#777777").pack(anchor="w", padx=16, pady=(16,4))
+        self.action_combo = ctk.CTkComboBox(right, values=list(ACTIONS.keys()), width=328, height=38, corner_radius=8, command=self.on_action_changed)
         self.action_combo.pack(padx=16, pady=2)
-
-        self.action_info = ctk.CTkLabel(right_panel, text="", font=("Segoe UI", 11), text_color="#AAAAAA")
+        self.action_info = ctk.CTkLabel(right, text="", font=("Segoe UI", 11), text_color="#AAAAAA")
         self.action_info.pack(pady=4)
 
-        ctk.CTkLabel(right_panel, text="Parameter", font=("Segoe UI", 11), text_color="#777777").pack(anchor="w", padx=16, pady=(10,2))
-        self.entry_param = ctk.CTkEntry(right_panel, placeholder_text="Key, URL or text value", height=38, corner_radius=8)
+        ctk.CTkLabel(right, text="Parameter", font=("Segoe UI", 11), text_color="#777777").pack(anchor="w", padx=16, pady=(10,2))
+        self.entry_param = ctk.CTkEntry(right, placeholder_text="Key, URL, Text", height=38, corner_radius=8)
         self.entry_param.pack(fill="x", padx=16, pady=2)
 
-        ctk.CTkButton(right_panel, text="Save Configuration", height=44, corner_radius=10, font=("Segoe UI", 13, "bold"), fg_color="#2563EB", command=self.save_current_slot).pack(fill="x", padx=16, pady=14)
-        ctk.CTkButton(right_panel, text="Test Action", height=36, corner_radius=8, fg_color="#059669", command=self.test_current_action).pack(fill="x", padx=16, pady=2)
-        ctk.CTkButton(right_panel, text="Minimize to Tray", height=36, corner_radius=8, fg_color="#3F3F46", command=self.minimize_to_tray).pack(fill="x", padx=16, pady=12)
+        ctk.CTkButton(right, text="Save Configuration", height=44, corner_radius=10, font=("Segoe UI", 13, "bold"), fg_color="#2563EB", command=self.save_slot).pack(fill="x", padx=16, pady=14)
+        ctk.CTkButton(right, text="Test Action", height=36, corner_radius=8, fg_color="#059669", command=self.test_action).pack(fill="x", padx=16, pady=2)
+        ctk.CTkButton(right, text="Minimize to Tray", height=36, corner_radius=8, fg_color="#3F3F46", command=self.minimize_to_tray).pack(fill="x", padx=16, pady=12)
 
-        self.footer_status = ctk.CTkLabel(right_panel, text=f"Config: {CONFIG_FILE} | Encoder Fast | All Keys Work | Run as Admin!", font=("Segoe UI", 9), text_color="#666666", wraplength=320)
-        self.footer_status.pack(side="bottom", pady=12, padx=10)
+        self.footer_status = ctk.CTkLabel(right, text=f"Config: {CONFIG_FILE}", font=("Segoe UI", 9), text_color="#666666", wraplength=320)
+        self.footer_status.pack(side="bottom", pady=12)
 
         self.select_slot("0")
 
-    def _format_button_text(self, cfg: Dict) -> str:
+    def _fmt(self, cfg: Dict) -> str:
         label = cfg.get("label", "Key")
         phys = cfg.get("physical_key", "F13")
         action = cfg.get("action", "none")
-        action_name = ACTIONS.get(action, (action, ""))[0]
-        return f"{label}\n{phys}\n{action_name}"
+        name = ACTIONS.get(action, (action, ""))[0]
+        return f"{label}\n{phys}\n{name}"
 
-    def select_slot(self, slot_id: str) -> None:
-        self.selected_slot = slot_id
-        cfg = self.config_data.get(slot_id, {})
-        self.slot_label.configure(text=f"Slot {slot_id} - {cfg.get('label','')}")
+    def select_slot(self, sid: str) -> None:
+        self.selected_slot = sid
+        cfg = self.config_data.get(sid, {})
+        self.slot_label.configure(text=f"Slot {sid} - {cfg.get('label','')}")
         self.entry_label.delete(0, "end")
         self.entry_label.insert(0, cfg.get("label", ""))
         self.key_display.configure(text=cfg.get("physical_key", "F13"))
@@ -278,52 +265,51 @@ class MetadeckApplication(ctk.CTk):
         self.entry_param.delete(0, "end")
         self.entry_param.insert(0, cfg.get("param", ""))
         self.on_action_changed(cfg.get("action", "none"))
-        for sid, btn in self.deck_buttons.items():
-            btn.configure(border_width=2, border_color="white" if sid == slot_id else btn.cget("fg_color"))
-            btn.configure(border_width=2 if sid == slot_id else 0, border_color="white")
+        for s, b in self.buttons.items():
+            b.configure(border_width=2 if s==sid else 0, border_color="white")
 
     def on_action_changed(self, action: str) -> None:
-        name, category = ACTIONS.get(action, (action, "System"))
-        self.action_info.configure(text=f"{name} - {category}")
+        name, cat = ACTIONS.get(action, (action, "System"))
+        self.action_info.configure(text=f"{name} - {cat}")
 
-    def save_current_slot(self) -> None:
-        slot_id = self.selected_slot
-        action = self.action_combo.get()
-        self.config_data[slot_id] = {
-            "label": self.entry_label.get() or f"Key {slot_id}",
+    def save_slot(self) -> None:
+        sid = self.selected_slot
+        act = self.action_combo.get()
+        self.config_data[sid] = {
+            "label": self.entry_label.get() or f"Key {sid}",
             "physical_key": self.key_display.cget("text"),
-            "action": action,
+            "action": act,
             "param": self.entry_param.get(),
-            "color": get_action_color(action)
+            "color": get_action_color(act)
         }
         ConfigManager.save(self.config_data)
-        cfg = self.config_data[slot_id]
-        if slot_id in self.deck_buttons:
-            self.deck_buttons[slot_id].configure(text=self._format_button_text(cfg), fg_color=cfg["color"])
+        cfg = self.config_data[sid]
+        if sid in self.buttons:
+            self.buttons[sid].configure(text=self._fmt(cfg), fg_color=cfg["color"])
         self._rebuild_hotkey_map()
-        self.set_status(f"Saved: Slot {slot_id} - {cfg['label']} -> {cfg['physical_key']} = {action}")
+        self.set_status(f"Saved: {sid} -> {cfg['physical_key']} = {act}")
 
-    def test_current_action(self) -> None:
-        action = self.action_combo.get()
+    def test_action(self) -> None:
+        act = self.action_combo.get()
         param = self.entry_param.get()
-        result = self.executor.execute(action, param)
-        self.set_status(f"Testing: {action} {param} - Result: {result} - If False, run as Admin!")
+        ok = self.executor.execute(act, param)
+        self.set_status(f"Test: {act} - OK: {ok}")
 
-    def start_key_assignment(self) -> None:
+    def start_assign(self) -> None:
         self.is_listening = True
         self.key_display.configure(text="Waiting...")
-        self.assign_button.configure(text="Press Key on Deck...", fg_color="#D32F2F")
-        self.set_status("Waiting for key press - Press any key on MEGA32U4 deck (F13-F24) - 10s timeout")
-        self.after(10000, self._cancel_assignment)
+        self.assign_btn.configure(text="Press Key on Deck...", fg_color="#D32F2F")
+        self.set_status("Waiting for key - Press key on MEGA32U4 (10s)")
+        self.after(10000, self._cancel_assign)
 
-    def _cancel_assignment(self) -> None:
+    def _cancel_assign(self) -> None:
         if self.is_listening:
             self.is_listening = False
-            self.assign_button.configure(text="Press to Assign Key", fg_color="#FF6F00")
+            self.assign_btn.configure(text="Press to Assign Key", fg_color="#FF6F00")
             cfg = self.config_data.get(self.selected_slot, {})
             self.key_display.configure(text=cfg.get("physical_key", "F13"))
 
-    def on_physical_key_detected(self, key_name: str) -> None:
+    def on_key_detected(self, key_name: str) -> None:
         if not self.is_listening:
             return
         self.is_listening = False
@@ -336,82 +322,71 @@ class MetadeckApplication(ctk.CTk):
             except:
                 pass
         self.key_display.configure(text=key_name)
-        self.assign_button.configure(text="Detected - Saving...", fg_color="#22C55E")
-        self.set_status(f"Key detected: {key_name} - Saving...")
-        self.after(600, lambda: [self.save_current_slot(), self.assign_button.configure(text="Press to Assign Key", fg_color="#FF6F00")])
+        self.assign_btn.configure(text="Detected - Saving...", fg_color="#22C55E")
+        self.set_status(f"Detected: {key_name}")
+        self.after(600, lambda: [self.save_slot(), self.assign_btn.configure(text="Press to Assign Key", fg_color="#FF6F00")])
 
     def _rebuild_hotkey_map(self) -> None:
         self.hotkey_map = {}
         for cfg in self.config_data.values():
-            physical_key = cfg.get("physical_key", "").lower()
-            if physical_key:
-                self.hotkey_map[physical_key] = (cfg.get("action", "none"), cfg.get("param", ""))
-        print(f"Hotkey map rebuilt: {self.hotkey_map}")
+            pk = cfg.get("physical_key", "").lower()
+            if pk:
+                self.hotkey_map[pk] = (cfg.get("action", "none"), cfg.get("param", ""))
 
     def _start_hotkey_listener(self) -> None:
         if not KEYBOARD_AVAILABLE:
-            self.set_status("Warning: keyboard library not available - Install: pip install keyboard - Admin required for F13-F24")
+            self.set_status("keyboard library missing")
             return
-
-        def hook_callback(event):
+        def cb(event):
             if event.event_type != 'down':
                 return
-            key_name = event.name.lower()
+            kn = event.name.lower()
             if self.is_listening:
-                self.after(0, lambda: self.on_physical_key_detected(key_name))
+                self.after(0, lambda: self.on_key_detected(kn))
                 return
-            if key_name in self.hotkey_map:
-                action, param = self.hotkey_map[key_name]
-                if action and action != "none":
-                    print(f"Hotkey: {key_name} -> {action} {param}")
-                    self.executor.execute(action, param)
-                    self.after(0, lambda: self.set_status(f"Executed: {key_name.upper()} -> {action}"))
-
+            if kn in self.hotkey_map:
+                act, param = self.hotkey_map[kn]
+                if act != "none":
+                    self.executor.execute(act, param)
+                    self.after(0, lambda: self.set_status(f"Executed: {kn.upper()} -> {act}"))
         try:
-            keyboard_lib.hook(hook_callback)
-            self.set_status(f"Ready - Hotkey listener active - F13-F24 - Encoder Fast - Config: {CONFIG_FILE} - Run as Admin!")
+            keyboard_lib.hook(cb)
+            self.set_status(f"Ready - JUST WORKS - F13-F24 active - Config: {CONFIG_FILE}")
         except Exception as e:
-            self.set_status(f"Hotkey listener requires administrator privileges: {e} - Run as Admin!")
+            self.set_status(f"Need Admin: {e}")
 
-    def set_status(self, message: str) -> None:
-        self.status_label.configure(text=f"Status: {message}")
-        self.footer_status.configure(text=message)
+    def set_status(self, msg: str) -> None:
+        self.status_label.configure(text=f"Status: {msg}")
+        self.footer_status.configure(text=msg)
 
     def minimize_to_tray(self) -> None:
         self.withdraw()
         if not TRAY_AVAILABLE:
-            self.set_status("Minimized - Tray library not available (install pystray and Pillow)")
             return
         if self.tray_icon is None:
             try:
                 icon_path = None
-                for candidate in ["assets/MetaStreamdeck.ico", "assets/Metadeck.ico", "MetaStreamdeck.ico", str(BASE_DIR / "assets" / "MetaStreamdeck.ico")]:
-                    if os.path.exists(candidate):
-                        icon_path = candidate
+                for p in ["assets/MetaStreamdeck.ico", str(BASE_DIR / "assets" / "MetaStreamdeck.ico")]:
+                    if os.path.exists(p):
+                        icon_path = p
                         break
-                if icon_path and os.path.exists(icon_path):
-                    tray_image = Image.open(icon_path)
-                else:
-                    tray_image = Image.new("RGB", (64, 64), color=(37, 99, 235))
+                img = Image.open(icon_path) if icon_path and os.path.exists(icon_path) else Image.new("RGB", (64, 64), color=(37, 99, 235))
                 menu = pystray.Menu(
                     pystray.MenuItem("Open Metadeck", self.show_from_tray, default=True),
                     pystray.Menu.SEPARATOR,
                     pystray.MenuItem("Exit", self.quit_from_tray)
                 )
-                self.tray_icon = pystray.Icon(PRODUCT_NAME, tray_image, f"{PRODUCT_NAME} v{CURRENT_VERSION} - Running in background", menu)
-                def run_tray_icon():
-                    self.tray_icon.run()
-                threading.Thread(target=run_tray_icon, daemon=True).start()
-                self.set_status("Minimized to system tray - Right-click tray icon for options")
+                self.tray_icon = pystray.Icon(PRODUCT_NAME, img, f"{PRODUCT_NAME} v{CURRENT_VERSION}", menu)
+                threading.Thread(target=self.tray_icon.run, daemon=True).start()
             except Exception as e:
                 print(f"Tray error: {e}")
 
-    def show_from_tray(self, icon=None, item=None) -> None:
+    def show_from_tray(self, icon=None, item=None):
         self.after(0, self.deiconify)
         self.after(0, self.lift)
         self.after(0, self.focus_force)
 
-    def quit_from_tray(self, icon=None, item=None) -> None:
+    def quit_from_tray(self, icon=None, item=None):
         if self.tray_icon:
             try:
                 self.tray_icon.stop()
