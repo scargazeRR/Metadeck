@@ -45,7 +45,7 @@ try:
 except:
     TRAY_AVAILABLE = False
 
-CURRENT_VERSION = "2.0.0"
+CURRENT_VERSION = "2.1.0"
 COMPANY_NAME = "ScargazeRR"
 PRODUCT_NAME = "Metadeck"
 
@@ -320,15 +320,20 @@ class ConfigManager:
         if CONFIG_FILE.exists():
             try:
                 with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    # Migration: add physical mapping if missing
+                    for k, v in data.items():
+                        if "physical" not in v:
+                            v["physical"] = f"B{k}" if int(k) < 20 else f"E{int(k)-20}"
+                    return data
             except:
                 pass
         config = {}
         for i in range(20):
-            config[str(i)] = {"label": f"Key {i+1}", "action": "none", "param": "", "color": "#2B2B2B"}
-        config["20"] = {"label": "ENC Left", "action": "system_volume_down", "param": "", "color": "#1E40AF"}
-        config["21"] = {"label": "ENC Right", "action": "system_volume_up", "param": "", "color": "#1E40AF"}
-        config["22"] = {"label": "ENC Press", "action": "media_play_pause", "param": "", "color": "#BE185D"}
+            config[str(i)] = {"label": f"Key {i+1}", "action": "none", "param": "", "color": "#2B2B2B", "physical": f"B{i}"}
+        config["20"] = {"label": "ENC Left", "action": "system_volume_down", "param": "", "color": "#1E40AF", "physical": "E0:L"}
+        config["21"] = {"label": "ENC Right", "action": "system_volume_up", "param": "", "color": "#1E40AF", "physical": "E0:R"}
+        config["22"] = {"label": "ENC Press", "action": "media_play_pause", "param": "", "color": "#BE185D", "physical": "E0:P"}
         return config
 
     @staticmethod
@@ -344,6 +349,7 @@ class MetadeckApplication(ctk.CTk):
         self._set_icon()
         self.config_data = ConfigManager.load()
         self.selected_slot = "0"
+        self.is_listening_physical = False
         self.tray_icon = None
         self.executor = ActionExecutor()
         self.serial_host = MetadeckSerialHost(self)
@@ -416,6 +422,12 @@ class MetadeckApplication(ctk.CTk):
         self.entry_label = ctk.CTkEntry(right, placeholder_text="Label", height=38, corner_radius=8)
         self.entry_label.pack(fill="x", padx=16, pady=2)
 
+        ctk.CTkLabel(right, text="Physical Key (Free Mapping)", font=("Segoe UI", 11, "bold"), text_color="#FF6F00").pack(anchor="w", padx=16, pady=(12,2))
+        self.physical_display = ctk.CTkLabel(right, text="B0", font=("Segoe UI", 22, "bold"), fg_color="#1E1E1E", corner_radius=10, width=328, height=48, text_color="#FF6F00")
+        self.physical_display.pack(padx=16, pady=2)
+        self.assign_physical_btn = ctk.CTkButton(right, text="Press to Assign Physical Key", fg_color="#FF6F00", height=40, corner_radius=8, font=("Segoe UI", 12, "bold"), command=self.start_assign_physical)
+        self.assign_physical_btn.pack(fill="x", padx=16, pady=4)
+
         ctk.CTkLabel(right, text="Action Type", font=("Segoe UI", 11, "bold"), text_color="#777777").pack(anchor="w", padx=16, pady=(16,4))
         action_values = list(ACTION_REGISTRY.keys())
         self.action_combo = ctk.CTkComboBox(right, values=action_values, width=328, height=38, corner_radius=8, command=self.on_action_changed)
@@ -448,6 +460,7 @@ class MetadeckApplication(ctk.CTk):
         self.slot_label.configure(text=f"Slot {sid} - {cfg.get('label','')}")
         self.entry_label.delete(0, "end")
         self.entry_label.insert(0, cfg.get("label", ""))
+        self.physical_display.configure(text=cfg.get("physical", f"B{sid}"))
         self.action_combo.set(cfg.get("action", "none"))
         self.entry_param.delete(0, "end")
         self.entry_param.insert(0, cfg.get("param", ""))
@@ -466,7 +479,8 @@ class MetadeckApplication(ctk.CTk):
             "label": self.entry_label.get() or f"Key {sid}",
             "action": act,
             "param": self.entry_param.get(),
-            "color": ACTION_REGISTRY.get(act, {}).get("color", "#2B2B2B")
+            "color": ACTION_REGISTRY.get(act, {}).get("color", "#2B2B2B"),
+            "physical": self.physical_display.cget("text")
         }
         ConfigManager.save(self.config_data)
         cfg = self.config_data[sid]
@@ -480,30 +494,66 @@ class MetadeckApplication(ctk.CTk):
         ok = self.executor.execute(act, param)
         self.set_status(f"Test: {act} - OK: {ok}")
 
+    def start_assign_physical(self):
+        self.is_listening_physical = True
+        self.physical_display.configure(text="Waiting...")
+        self.assign_physical_btn.configure(text="Press Physical Key Now...", fg_color="#D32F2F")
+        self.set_status("Press any key on deck to assign - 10s")
+        self.after(10000, self.cancel_assign_physical)
+
+    def cancel_assign_physical(self):
+        if self.is_listening_physical:
+            self.is_listening_physical = False
+            self.assign_physical_btn.configure(text="Press to Assign Physical Key", fg_color="#FF6F00")
+            cfg = self.config_data.get(self.selected_slot, {})
+            self.physical_display.configure(text=cfg.get("physical", f"B{self.selected_slot}"))
+
+    def on_physical_detected(self, physical_code):
+        if not self.is_listening_physical:
+            return
+        self.is_listening_physical = False
+        self.physical_display.configure(text=physical_code)
+        self.assign_physical_btn.configure(text="Detected - Saving...", fg_color="#22C55E")
+        self.set_status(f"Physical {physical_code} assigned to Slot {self.selected_slot}")
+        self.after(600, lambda: [self.save_slot(), self.assign_physical_btn.configure(text="Press to Assign Physical Key", fg_color="#FF6F00")])
+
     def on_usb_event(self, button_id, type_char, event):
-        # type_char B = Button, E = Encoder
-        if type_char == 'B':
-            slot_id = str(button_id)
-        else:
-            # Encoder: E0:L -> 20, E0:R -> 21, E0:P -> 22
-            if event == 'L':
-                slot_id = "20"
-            elif event == 'R':
-                slot_id = "21"
+        physical_code = f"{type_char}{button_id}:{event}" if type_char == 'E' else f"{type_char}{button_id}"
+        # If listening for physical assignment
+        if self.is_listening_physical:
+            self.after(0, lambda pc=physical_code: self.on_physical_detected(pc))
+            return
+        
+        # Free mapping: find slot that has this physical code
+        slot_id = None
+        for sid, cfg in self.config_data.items():
+            if cfg.get("physical") == physical_code:
+                slot_id = sid
+                break
+        
+        # Fallback: old fixed mapping if not found
+        if slot_id is None:
+            if type_char == 'B':
+                slot_id = str(button_id)
             else:
-                slot_id = "22"
+                if event == 'L':
+                    slot_id = "20"
+                elif event == 'R':
+                    slot_id = "21"
+                else:
+                    slot_id = "22"
         
         cfg = self.config_data.get(slot_id)
         if not cfg:
-            self.set_status(f"USB {type_char}{button_id}:{event} -> Slot {slot_id} not configured")
+            self.set_status(f"USB {physical_code} -> Slot {slot_id} not configured")
             return
         action = cfg.get("action", "none")
         param = cfg.get("param", "")
         if action == "none":
-            self.set_status(f"USB {type_char}{button_id}:{event} -> No action")
+            self.set_status(f"USB {physical_code} -> No action (assign action!)")
             return
         ok = self.executor.execute(action, param)
-        self.set_status(f"USB {type_char}{button_id}:{event} -> {action} - {'WORKS!' if ok else 'FAIL'}")
+        self.set_status(f"USB {physical_code} -> Slot {slot_id} {action} - {'WORKS!' if ok else 'FAIL'}")
 
     def set_status(self, msg):
         self.status_label.configure(text=f"Status: {msg}")
