@@ -1,57 +1,28 @@
 name: Build Metadeck EXE
-
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
   workflow_dispatch:
-
 permissions:
   contents: write
-
 jobs:
   build-windows:
     runs-on: windows-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          
-      - name: Install dependencies
+      - name: Install deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
-          
-      - name: Check files (Debug)
+      - name: Build EXE
         run: |
-          dir
-          dir assets
-          dir src
-          dir build
-          
-      - name: Build EXE with Icon and Publisher
-        run: |
-          python -m PyInstaller --onefile --windowed --clean --noconfirm --name Metadeck --icon=assets/MetaStreamdeck.ico --version-file=build/version_info.txt --hidden-import=comtypes --hidden-import=pycaw --hidden-import=customtkinter --hidden-import=keyboard --hidden-import=requests --hidden-import=PIL --hidden-import=ctypes --collect-all customtkinter src/main.py
-          
-      - name: Check EXE
-        run: |
-          dir dist
-          
-      - name: Upload EXE to Release
+          python -m PyInstaller --onefile --windowed --clean --name Metadeck --icon=assets/MetaStreamdeck.ico --version-file=build/version_info.txt --hidden-import=comtypes --hidden-import=pycaw --hidden-import=customtkinter --hidden-import=keyboard --hidden-import=requests --hidden-import=pystray --hidden-import=PIL --hidden-import=PIL.Image src/main.py
+      - name: Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: dist/Metadeck.exe
-          token: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Upload Artifact (for testing)
-        uses: actions/upload-artifact@v4
-        with:
-          name: Metadeck-EXE
-          path: dist/Metadeck.exe
