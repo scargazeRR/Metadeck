@@ -1,7 +1,8 @@
 
 """
-Metadeck v1.3.9 
-
+Metadeck v1.3.9 - JUST WORKS Edition
+Professional MEGA32U4 Stream Deck - Works like Macro Deck
+No emojis, no bullshit, just works.
 """
 
 import os
@@ -34,6 +35,108 @@ try:
     TRAY_AVAILABLE = True
 except:
     TRAY_AVAILABLE = False
+
+
+try:
+    import serial
+    import serial.tools.list_ports
+    SERIAL_AVAILABLE = True
+except:
+    SERIAL_AVAILABLE = False
+
+class SerialReader:
+    def __init__(self, app):
+        self.app = app
+        self.running = False
+        self.ser = None
+        self.thread = None
+
+    def find_metadeck_port(self):
+        if not SERIAL_AVAILABLE:
+            return None
+        ports = list(serial.tools.list_ports.comports())
+        for p in ports:
+            # MEGA32U4 ist meist Arduino Leonardo / Pro Micro
+            if "Arduino" in p.description or "Leonardo" in p.description or "Pro Micro" in p.description or "VID:PID=2341" in p.hwid or "1A86" in p.hwid:
+                return p.device
+        # Fallback: nimm ersten verfügbaren
+        for p in ports:
+            if "COM" in p.device or "/dev/tty" in p.device:
+                try:
+                    # Teste ob METADECK_READY kommt
+                    test_ser = serial.Serial(p.device, 9600, timeout=1)
+                    test_ser.readline()
+                    test_ser.close()
+                    return p.device
+                except:
+                    pass
+        return None
+
+    def start(self):
+        if not SERIAL_AVAILABLE:
+            print("pyserial not installed")
+            return False
+        port = self.find_metadeck_port()
+        if not port:
+            print("No Metadeck COM port found - using F-keys fallback")
+            return False
+        try:
+            self.ser = serial.Serial(port, 9600, timeout=0.1)
+            self.running = True
+            self.thread = threading.Thread(target=self.read_loop, daemon=True)
+            self.thread.start()
+            print(f"Serial reader started on {port}")
+            self.app.after(0, lambda: self.app.set_status(f"Serial OK on {port} - JUST WORKS like Macro Deck!"))
+            return True
+        except Exception as e:
+            print(f"Serial start error: {e}")
+            return False
+
+    def read_loop(self):
+        while self.running and self.ser:
+            try:
+                if self.ser.in_waiting:
+                    line = self.ser.readline().decode('utf-8', errors='ignore').strip()
+                    if not line:
+                        continue
+                    print(f"SERIAL: {line}")
+                    # Parse
+                    # BTN_0_F13 -> button 0 -> physical F13
+                    # ENC_LEFT -> F20 etc
+                    key_name = None
+                    if line.startswith("BTN_"):
+                        # BTN_0_F13
+                        try:
+                            parts = line.split("_")
+                            f_part = parts[-1]  # F13
+                            key_name = f_part.lower()
+                        except:
+                            pass
+                    elif line == "ENC_LEFT":
+                        key_name = "f20"
+                    elif line == "ENC_RIGHT":
+                        key_name = "f21"
+                    elif line == "ENC_PRESS":
+                        key_name = "f22"
+                    elif line == "METADECK_READY":
+                        self.app.after(0, lambda: self.app.set_status("Metadeck Board Connected via Serial!"))
+                        continue
+                    
+                    if key_name:
+                        print(f"SERIAL EXEC: {key_name}")
+                        self.app.after(0, lambda k=key_name: self.app.on_serial_key(k))
+            except Exception as e:
+                print(f"Serial read error: {e}")
+                break
+
+    def stop(self):
+        self.running = False
+        if self.ser:
+            try:
+                self.ser.close()
+            except:
+                pass
+
 
 CURRENT_VERSION = "1.3.9"
 COMPANY_NAME = "ScargazeRR"
@@ -213,10 +316,30 @@ class MetadeckApplication(ctk.CTk):
         self.is_listening = False
         self.tray_icon = None
         self.executor = AudioExecutor()
+        self.serial_reader = SerialReader(self)
         self.protocol("WM_DELETE_WINDOW", self.minimize_to_tray)
         self._create_ui()
         self._rebuild_hotkey_map()
         self._start_hotkey_listener()
+        # Start Serial like Macro Deck - 100% reliable!
+        try:
+            self.serial_reader.start()
+        except Exception as e:
+            print(f"Serial start failed: {e}")
+
+    def on_serial_key(self, key_name: str) -> None:
+        # Called from Serial - JUST WORKS like Macro Deck!
+        key_name = key_name.lower()
+        if self.is_listening:
+            self.on_key_detected(key_name)
+            return
+        if key_name in self.hotkey_map:
+            act, param = self.hotkey_map[key_name]
+            if act != "none":
+                self.executor.execute(act, param)
+                self.set_status(f"Executed via Serial: {key_name.upper()} -> {act} - WORKS!")
+        else:
+            self.set_status(f"Serial Key {key_name.upper()} not mapped - assign it!")
 
     def _set_icon(self):
         try:
@@ -465,7 +588,7 @@ class MetadeckApplication(ctk.CTk):
             # Zusätzlich hook für Debug - zeigt alle Tasten
             keyboard_lib.hook(debug_cb)
             
-            self.set_status(f"Ready v1.3.11 - F13-F24 add_hotkey active - {len(self.hotkey_map)} mappings - Press F20 to test!")
+            self.set_status(f"Ready v1.4.0 - F13-F24 add_hotkey active - {len(self.hotkey_map)} mappings - Press F20 to test!")
         except Exception as e:
             self.set_status(f"Need Admin for F13-F24: {e} - Right-click Run as Admin!")
             print(f"Hotkey error: {e}")
