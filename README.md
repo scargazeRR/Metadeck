@@ -8,35 +8,15 @@
 
 [Logo](assets/MetaStreamdeck.png)
 
-**Das professionelle Stream Deck für Creator - 10x2 Tasten + 3 Encoder - Drücken zum Belegen wie Elgato - Auto-Updater wie Steam**
 
----
 
-## ✨ Was ist Metadeck?
-
-Metadeck ist deine eigene Stream Deck Hardware mit **MEGA32U4 Chip** (Pro Micro / Leonardo) + **schöner Software** die aussieht wie die echte Elgato Software.
-
-**Kein Löten, kein Programmieren für Nutzer - einfach EXE runterladen und loslegen!**
-
-### 🎯 Für wen?
-
-- **Streamer** - Szenen wechseln, Mute, Volume
-- **YouTuber** - YouTube steuern ohne Maus
-- **Gamer** - Media Keys, Shortcuts
-- **Office** - Custom Texte, URLs, Keys
-- **Musiker** - System Volume, Play/Pause
-
----
-
-## 🚀 Installation für Nutzer (30 Sekunden)
-
-### Du brauchst NICHTS installieren - nur die EXE!
+## 🚀Installation 
 
 **Schritt 1: Download**
 
 Gehe auf 👉 **[Latest Release](https://github.com/scargazeRR/Metadeck/releases/latest)**
 
-Lade runter: **`Metadeck.exe`** oder **`MetaStreamdeck.exe`** (ca. 40MB)
+Lade runter: **`Metadeck.exe`** 
 
 **Schritt 2: Starten**
 
