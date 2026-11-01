@@ -1,43 +1,60 @@
+
 #include <Keyboard.h>
-
 const int buttonPins[] = {2,3,4,5,6,7,8,9,10,14,15,16,18,19,20,21,38,39,40,41};
-const int encoderPins[] = {A0,A1,A2};
 const int NUM_BUTTONS = 20;
-unsigned long lastDebounceTime[23] = {0};
-int lastButtonState[23];
-int buttonState[23];
-const unsigned long debounceDelay = 50;
-bool lastEncoderState[3] = {HIGH,HIGH,HIGH};
-
+const int encoderLeft = A0;
+const int encoderRight = A1;
+const int encoderPress = A2;
+unsigned long lastDebounce[20] = {0};
+int lastState[20];
+int btnState[20];
+const unsigned long BTN_DEBOUNCE = 50;
+unsigned long lastEncTime = 0;
+const unsigned long ENC_REPEAT = 25;
 void setup() {
   Keyboard.begin();
-  for(int i=0;i<NUM_BUTTONS;i++){pinMode(buttonPins[i],INPUT_PULLUP);lastButtonState[i]=HIGH;buttonState[i]=HIGH;}
-  for(int i=0;i<3;i++) pinMode(encoderPins[i],INPUT_PULLUP);
+  for(int i=0;i<NUM_BUTTONS;i++){pinMode(buttonPins[i],INPUT_PULLUP);lastState[i]=HIGH;btnState[i]=HIGH;}
+  pinMode(encoderLeft, INPUT_PULLUP);
+  pinMode(encoderRight, INPUT_PULLUP);
+  pinMode(encoderPress, INPUT_PULLUP);
 }
-
 void loop() {
   for(int i=0;i<NUM_BUTTONS;i++){
-    int reading=digitalRead(buttonPins[i]);
-    if(reading!=lastButtonState[i]) lastDebounceTime[i]=millis();
-    if((millis()-lastDebounceTime[i])>debounceDelay){
-      if(reading!=buttonState[i]){
-        buttonState[i]=reading;
-        if(buttonState[i]==LOW){
-          int key=KEY_F13+i; if(key>KEY_F24) key=KEY_F13+(i%12);
-          Keyboard.press(key); delay(20); Keyboard.release(key);
+    int r=digitalRead(buttonPins[i]);
+    if(r!=lastState[i]) lastDebounce[i]=millis();
+    if((millis()-lastDebounce[i])>BTN_DEBOUNCE){
+      if(r!=btnState[i]){
+        btnState[i]=r;
+        if(btnState[i]==LOW){
+          int k=KEY_F13+i; if(k>KEY_F24) k=KEY_F13+(i%12);
+          Keyboard.press(k); delay(10); Keyboard.release(k);
         }
       }
     }
-    lastButtonState[i]=reading;
+    lastState[i]=r;
   }
-  for(int i=0;i<3;i++){
-    int reading=digitalRead(encoderPins[i]);
-    if(reading!=lastEncoderState[i]) lastDebounceTime[NUM_BUTTONS+i]=millis();
-    if((millis()-lastDebounceTime[NUM_BUTTONS+i])>debounceDelay){
-      if(reading==LOW && lastEncoderState[i]==HIGH){
-        int key=KEY_F20+i; Keyboard.press(key); delay(20); Keyboard.release(key);
-      }
-      lastEncoderState[i]=reading;
+  if(millis()-lastEncTime > ENC_REPEAT){
+    if(digitalRead(encoderLeft)==LOW){
+      Keyboard.press(KEY_F20); delay(5); Keyboard.release(KEY_F20);
+      lastEncTime=millis();
     }
+    if(digitalRead(encoderRight)==LOW){
+      Keyboard.press(KEY_F21); delay(5); Keyboard.release(KEY_F21);
+      lastEncTime=millis();
+    }
+  }
+  static unsigned long lastPressDeb=0;
+  static int lastPressSt=HIGH;
+  static int pressSt=HIGH;
+  int pr=digitalRead(encoderPress);
+  if(pr!=lastPressSt) lastPressDeb=millis();
+  if((millis()-lastPressDeb)>50){
+    if(pr!=pressSt){
+      pressSt=pr;
+      if(pressSt==LOW){
+        Keyboard.press(KEY_F22); delay(10); Keyboard.release(KEY_F22);
+      }
+    }
+    lastPressSt=pr;
   }
 }
