@@ -1,0 +1,35 @@
+name: Build MetaStreamdeck
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: |
+          pip install --upgrade pip
+          pip install customtkinter pynput comtypes pycaw keyboard requests packaging pyinstaller pillow
+      - name: Build EXE
+        run: |
+          python -m PyInstaller --onefile --windowed --name MetaStreamdeck --icon=assets/MetaStreamdeck.ico --version-file=build/version_info.txt --hidden-import=comtypes --hidden-import=pycaw --hidden-import=customtkinter --hidden-import=keyboard --hidden-import=requests src/main.py
+      - name: Auto Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/MetaStreamdeck.exe
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
