@@ -1,6 +1,7 @@
 
 """
 Metadeck v1.3.9 
+
 """
 
 import os
@@ -69,53 +70,114 @@ def get_action_color(action_key: str) -> str:
 
 class AudioExecutor:
     def execute(self, action: str, param: str = "") -> bool:
-        if "volume_down" in action or "volume_up" in action or "mute" in action:
-            if PYCAW_AVAILABLE:
-                try:
-                    devices = AudioUtilities.GetSpeakers()
-                    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-                    volume = cast(interface, POINTER(IAudioEndpointVolume))
-                    current = volume.GetMasterVolumeLevelScalar()
-                    if "down" in action:
-                        volume.SetMasterVolumeLevelScalar(max(0.0, current - 0.05), None)
-                    elif "up" in action:
-                        volume.SetMasterVolumeLevelScalar(min(1.0, current + 0.05), None)
-                    elif "mute" in action:
-                        volume.SetMute(not volume.GetMute(), None)
-                    return True
-                except Exception as e:
-                    print(f"Volume API error: {e}")
+        try:
+            # SYSTEM VOLUME - direkt Windows API wie Macro Deck
+            if "volume_down" in action or "volume_up" in action or "mute" in action:
+                if PYCAW_AVAILABLE:
+                    try:
+                        devices = AudioUtilities.GetSpeakers()
+                        interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+                        volume = cast(interface, POINTER(IAudioEndpointVolume))
+                        current = volume.GetMasterVolumeLevelScalar()
+                        if "down" in action:
+                            volume.SetMasterVolumeLevelScalar(max(0.0, current - 0.05), None)
+                        elif "up" in action:
+                            volume.SetMasterVolumeLevelScalar(min(1.0, current + 0.05), None)
+                        elif "mute" in action:
+                            volume.SetMute(not volume.GetMute(), None)
+                        print(f"Volume direct API: {current} -> {action}")
+                        return True
+                    except Exception as e:
+                        print(f"Volume API error: {e}")
+                # Fallback
+                if KEYBOARD_AVAILABLE:
+                    try:
+                        if "down" in action: keyboard_lib.send("volume down")
+                        elif "up" in action: keyboard_lib.send("volume up")
+                        elif "mute" in action: keyboard_lib.send("volume mute")
+                        return True
+                    except: pass
+                return False
+
+            # YOUTUBE - FIX: sendet k/m/j/l wie Macro Deck + Media Key
             if KEYBOARD_AVAILABLE:
-                try:
-                    if "down" in action:
-                        keyboard_lib.send("volume down")
-                    elif "up" in action:
-                        keyboard_lib.send("volume up")
-                    elif "mute" in action:
-                        keyboard_lib.send("volume mute")
-                    return True
-                except:
-                    pass
-            return False
-        if KEYBOARD_AVAILABLE:
-            try:
-                if action in ["yt_play_pause", "media_play_pause"]:
+                if action == "yt_play_pause":
+                    # YouTube Shortcut: k oder Space - funktioniert immer wenn Tab aktiv
+                    # Macro Deck Trick: sende beides!
                     keyboard_lib.send("play/pause media")
-                elif action in ["yt_next", "media_next"]:
+                    keyboard_lib.send("k")
+                    print("YouTube Play/Pause: sent media + k")
+                    return True
+                elif action == "yt_mute":
+                    keyboard_lib.send("m")
+                    print("YouTube Mute: sent m")
+                    return True
+                elif action == "yt_next":
+                    # YouTube Next: Shift+n
+                    keyboard_lib.send("shift+n")
                     keyboard_lib.send("next track")
-                elif action in ["yt_previous", "media_previous"]:
+                    return True
+                elif action == "yt_previous":
+                    keyboard_lib.send("shift+p")
                     keyboard_lib.send("previous track")
+                    return True
+                elif action == "yt_volume_down":
+                    keyboard_lib.send("down")
+                    return True
+                elif action == "yt_volume_up":
+                    keyboard_lib.send("up")
+                    return True
+                # SYSTEM MEDIA
+                elif action == "media_play_pause":
+                    keyboard_lib.send("play/pause media")
+                    return True
+                elif action == "media_next":
+                    keyboard_lib.send("next track")
+                    return True
+                elif action == "media_previous":
+                    keyboard_lib.send("previous track")
+                    return True
+                elif action == "system_volume_down":
+                    if PYCAW_AVAILABLE:
+                        try:
+                            devices = AudioUtilities.GetSpeakers()
+                            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+                            volume = cast(interface, POINTER(IAudioEndpointVolume))
+                            current = volume.GetMasterVolumeLevelScalar()
+                            volume.SetMasterVolumeLevelScalar(max(0.0, current - 0.05), None)
+                            return True
+                        except: pass
+                    keyboard_lib.send("volume down")
+                    return True
+                elif action == "system_volume_up":
+                    if PYCAW_AVAILABLE:
+                        try:
+                            devices = AudioUtilities.GetSpeakers()
+                            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+                            volume = cast(interface, POINTER(IAudioEndpointVolume))
+                            current = volume.GetMasterVolumeLevelScalar()
+                            volume.SetMasterVolumeLevelScalar(min(1.0, current + 0.05), None)
+                            return True
+                        except: pass
+                    keyboard_lib.send("volume up")
+                    return True
+                elif action == "system_mute":
+                    keyboard_lib.send("volume mute")
+                    return True
                 elif action == "custom_key" and param:
                     keyboard_lib.send(param)
+                    return True
                 elif action == "custom_text" and param:
                     keyboard_lib.write(param)
+                    return True
                 elif action == "open_url" and param:
+                    import webbrowser
                     webbrowser.open(param)
-                return True
-            except Exception as e:
-                print(f"Key error: {e}")
-                return False
-        return False
+                    return True
+            return False
+        except Exception as e:
+            print(f"Executor error: {e}")
+            return False
 
 class ConfigManager:
     @staticmethod
@@ -335,25 +397,83 @@ class MetadeckApplication(ctk.CTk):
 
     def _start_hotkey_listener(self) -> None:
         if not KEYBOARD_AVAILABLE:
-            self.set_status("keyboard library missing")
+            self.set_status("keyboard library missing - pip install keyboard")
             return
-        def cb(event):
+        
+        # DEBUG: Zeige jede Taste die reinkommt
+        def debug_cb(event):
             if event.event_type != 'down':
                 return
             kn = event.name.lower()
+            # Zeige IMMER was gedrückt wurde - auch wenn nicht gemappt!
+            self.after(0, lambda k=kn: self.set_status(f"Key detected: {k.upper()} - Map: {list(self.hotkey_map.keys())[:5]}..."))
+            print(f"KEY DETECTED: {kn} - listening={self.is_listening}")
+            
             if self.is_listening:
                 self.after(0, lambda: self.on_key_detected(kn))
                 return
+            
             if kn in self.hotkey_map:
                 act, param = self.hotkey_map[kn]
                 if act != "none":
+                    print(f"EXECUTING: {kn} -> {act} / {param}")
                     self.executor.execute(act, param)
-                    self.after(0, lambda: self.set_status(f"Executed: {kn.upper()} -> {act}"))
+                    self.after(0, lambda k=kn, a=act: self.set_status(f"Executed: {k.upper()} -> {a} - WORKS!"))
+            else:
+                # F13-F24 Fix: Manchmal heißt F20 anders - probiere Variationen
+                alt = kn.replace("f", "")
+                if alt.isdigit():
+                    alt_key = f"f{alt}"
+                    if alt_key in self.hotkey_map:
+                        act, param = self.hotkey_map[alt_key]
+                        if act != "none":
+                            print(f"EXECUTING ALT: {alt_key} -> {act}")
+                            self.executor.execute(act, param)
+                            self.after(0, lambda k=alt_key, a=act: self.set_status(f"Executed ALT: {k.upper()} -> {a} - WORKS!"))
+
+        # FIX: add_hotkey für F13-F24 ist zuverlässiger als hook - wie Macro Deck!
         try:
-            keyboard_lib.hook(cb)
-            self.set_status(f"Ready - JUST WORKS - F13-F24 active - Config: {CONFIG_FILE}")
+            # Erst alle alten Hotkeys entfernen
+            keyboard_lib.unhook_all()
+            
+            # Für jede F-Taste einen eigenen Hotkey registrieren - geht IMMER!
+            for f_num in range(13, 25):
+                f_key = f"f{f_num}"
+                # Wrapper für korrekte Closure
+                def make_handler(key_name):
+                    def handler():
+                        print(f"HOTKEY: {key_name}")
+                        if self.is_listening:
+                            self.after(0, lambda: self.on_key_detected(key_name))
+                            return
+                        if key_name in self.hotkey_map:
+                            act, param = self.hotkey_map[key_name]
+                            if act != "none":
+                                self.executor.execute(act, param)
+                                self.after(0, lambda k=key_name, a=act: self.set_status(f"Executed: {k.upper()} -> {a} - WORKS!"))
+                        # Debug falls nicht gemappt
+                        else:
+                            self.after(0, lambda k=key_name: self.set_status(f"Key {k.upper()} not mapped - assign it!"))
+                    return handler
+                
+                try:
+                    keyboard_lib.add_hotkey(f_key, make_handler(f_key), suppress=False, trigger_on_release=False)
+                    print(f"Registered hotkey: {f_key}")
+                except Exception as e:
+                    print(f"Failed to register {f_key}: {e}")
+
+            # Zusätzlich hook für Debug - zeigt alle Tasten
+            keyboard_lib.hook(debug_cb)
+            
+            self.set_status(f"Ready v1.3.11 - F13-F24 add_hotkey active - {len(self.hotkey_map)} mappings - Press F20 to test!")
         except Exception as e:
-            self.set_status(f"Need Admin: {e}")
+            self.set_status(f"Need Admin for F13-F24: {e} - Right-click Run as Admin!")
+            print(f"Hotkey error: {e}")
+            # Fallback auf hook
+            try:
+                keyboard_lib.hook(debug_cb)
+            except:
+                pass
 
     def set_status(self, msg: str) -> None:
         self.status_label.configure(text=f"Status: {msg}")
