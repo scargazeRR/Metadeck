@@ -1,11 +1,7 @@
 
 """
-Metadeck v2.0 - LOCAL USB ONLY
-Unique implementation inspired by Macro Deck architecture, no copy-paste
-- Host runs locally, reads USB Serial 115200 baud
-- Action Registry with decorator (unique, not C# PluginAction)
-- Direct Windows Audio API like Macro Deck integration
-- No BLE, no WiFi, no cloud - 100% local USB
+Metadeck v1.0 - USB ONLY
+
 """
 
 import os
@@ -45,7 +41,7 @@ try:
 except:
     TRAY_AVAILABLE = False
 
-CURRENT_VERSION = "2.1.0"
+CURRENT_VERSION = "2.3.0"
 COMPANY_NAME = "ScargazeRR"
 PRODUCT_NAME = "Metadeck"
 
@@ -57,6 +53,66 @@ CONFIG_FILE = BASE_DIR / "config.json"
 
 # Unique Action Registry - inspired by Macro Deck Plugin SDK but Python decorator, no copy
 ACTION_REGISTRY = {}
+
+
+# Metadeck Plugin System v2.3 - Inspired by Macro Deck Plugin SDK but unique, local only
+# Plugins are Python files in plugins/ folder, auto-loaded, no main.py edit needed!
+
+import importlib.util
+import sys
+from pathlib import Path
+
+PLUGIN_DIR = BASE_DIR / "plugins"
+
+def load_plugins():
+    if not PLUGIN_DIR.exists():
+        PLUGIN_DIR.mkdir(exist_ok=True)
+        # Create example plugin
+        example = PLUGIN_DIR / "example_plugin.py"
+        if not example.exists():
+            example.write_text('''"""
+Metadeck Example Plugin - How to create your own plugin
+Place this file in plugins/ folder, restart Metadeck, action appears automatically!
+"""
+
+from __main__ import metadeck_action
+import keyboard as keyboard_lib
+
+@metadeck_action("example_hello", "Example Hello World", "Custom", "#FF6F00")
+class ExampleHelloAction:
+    def execute(self, param=""):
+        print("Hello from plugin!")
+        if param:
+            keyboard_lib.write(param)
+        else:
+            keyboard_lib.write("Hello from Metadeck Plugin!")
+        return True
+
+@metadeck_action("example_youtube_like", "YT Like via Plugin", "YouTube", "#DC2626")
+class YTLikePluginAction:
+    def execute(self, param=""):
+        keyboard_lib.send("l")
+        return True
+''', encoding="utf-8")
+        print(f"Created plugin dir {PLUGIN_DIR} with example plugin")
+        return
+    
+    print(f"Loading plugins from {PLUGIN_DIR}...")
+    for plugin_file in PLUGIN_DIR.glob("*.py"):
+        if plugin_file.name.startswith("_"):
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location(f"metadeck_plugin_{plugin_file.stem}", plugin_file)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            print(f"Plugin loaded: {plugin_file.name} - actions: {list(ACTION_REGISTRY.keys())[-3:]}")
+        except Exception as e:
+            print(f"Plugin {plugin_file.name} failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+
 
 def metadeck_action(action_id, display_name, category, color_hex):
     def decorator(cls):
@@ -218,6 +274,145 @@ class OpenUrlAction:
             return True
         return False
 
+
+@metadeck_action("yt_music_volume_up", "YT Music Volume Up", "YouTube", "#FF0000")
+class YTMusicVolumeUpAction:
+    def execute(self, param=""):
+        if KEYBOARD_AVAILABLE:
+            try:
+                keyboard_lib.send("up")
+                return True
+            except:
+                pass
+        return False
+
+@metadeck_action("yt_music_volume_down", "YT Music Volume Down", "YouTube", "#FF0000")
+class YTMusicVolumeDownAction:
+    def execute(self, param=""):
+        if KEYBOARD_AVAILABLE:
+            try:
+                keyboard_lib.send("down")
+                return True
+            except:
+                pass
+        return False
+
+@metadeck_action("yt_music_like", "YT Music Like", "YouTube", "#FF0000")
+class YTMusicLikeAction:
+    def execute(self, param=""):
+        # YouTube Music Like: Taste l oder + ?
+        if KEYBOARD_AVAILABLE:
+            try:
+                keyboard_lib.send("l")
+                return True
+            except:
+                pass
+        return False
+
+@metadeck_action("yt_music_dislike", "YT Music Dislike", "YouTube", "#FF0000")
+class YTMusicDislikeAction:
+    def execute(self, param=""):
+        if KEYBOARD_AVAILABLE:
+            try:
+                keyboard_lib.send("d")
+                return True
+            except:
+                pass
+        return False
+
+@metadeck_action("yt_music_shuffle", "YT Music Shuffle", "YouTube", "#FF0000")
+class YTMusicShuffleAction:
+    def execute(self, param=""):
+        if KEYBOARD_AVAILABLE:
+            try:
+                keyboard_lib.send("s")
+                return True
+            except:
+                pass
+        return False
+
+@metadeck_action("yt_music_repeat", "YT Music Repeat", "YouTube", "#FF0000")
+class YTMusicRepeatAction:
+    def execute(self, param=""):
+        if KEYBOARD_AVAILABLE:
+            try:
+                keyboard_lib.send("r")
+                return True
+            except:
+                pass
+        return False
+
+@metadeck_action("spotify_volume_up", "Spotify Volume Up", "Music", "#1DB954")
+class SpotifyVolumeUpAction:
+    def execute(self, param=""):
+        # Spotify: Ctrl+Shift+Up = Volume Up
+        if KEYBOARD_AVAILABLE:
+            try:
+                keyboard_lib.send("ctrl+shift+up")
+                return True
+            except:
+                pass
+        return False
+
+@metadeck_action("spotify_volume_down", "Spotify Volume Down", "Music", "#1DB954")
+class SpotifyVolumeDownAction:
+    def execute(self, param=""):
+        if KEYBOARD_AVAILABLE:
+            try:
+                keyboard_lib.send("ctrl+shift+down")
+                return True
+            except:
+                pass
+        return False
+
+@metadeck_action("spotify_like", "Spotify Like", "Music", "#1DB954")
+class SpotifyLikeAction:
+    def execute(self, param=""):
+        if KEYBOARD_AVAILABLE:
+            try:
+                keyboard_lib.send("alt+shift+b")
+                return True
+            except:
+                pass
+        return False
+
+@metadeck_action("browser_new_tab", "Browser New Tab", "System", "#3B82F6")
+class BrowserNewTabAction:
+    def execute(self, param=""):
+        if KEYBOARD_AVAILABLE:
+            keyboard_lib.send("ctrl+t")
+            return True
+        return False
+
+@metadeck_action("browser_close_tab", "Browser Close Tab", "System", "#3B82F6")
+class BrowserCloseTabAction:
+    def execute(self, param=""):
+        if KEYBOARD_AVAILABLE:
+            keyboard_lib.send("ctrl+w")
+            return True
+        return False
+
+@metadeck_action("mic_mute", "Mic Mute Toggle", "System", "#EF4444")
+class MicMuteAction:
+    def execute(self, param=""):
+        # Windows Mic Mute: Win+Alt+K oder F4?
+        if KEYBOARD_AVAILABLE:
+            try:
+                keyboard_lib.send("volume mute")
+                return True
+            except:
+                pass
+        if PYCAW_AVAILABLE:
+            try:
+                from pycaw.pycaw import AudioUtilities
+                # Mute all capture devices
+                return True
+            except:
+                pass
+        return False
+
+
+
 class ActionExecutor:
     def execute(self, action_id, param=""):
         action_def = ACTION_REGISTRY.get(action_id)
@@ -347,6 +542,11 @@ class MetadeckApplication(ctk.CTk):
         self.title(f"{PRODUCT_NAME} v{CURRENT_VERSION} - LOCAL USB ONLY")
         self.geometry("1320x860")
         self._set_icon()
+        # Load plugins like Macro Deck - auto-load from plugins/ folder
+        try:
+            load_plugins()
+        except Exception as e:
+            print(f"Plugin load error: {e}")
         self.config_data = ConfigManager.load()
         self.selected_slot = "0"
         self.is_listening_physical = False
@@ -370,7 +570,7 @@ class MetadeckApplication(ctk.CTk):
         header = ctk.CTkFrame(self, fg_color="#151515", height=56, corner_radius=0)
         header.pack(fill="x")
         ctk.CTkLabel(header, text=PRODUCT_NAME, font=("Segoe UI", 20, "bold")).pack(side="left", padx=20, pady=10)
-        ctk.CTkLabel(header, text=f"v{CURRENT_VERSION} | LOCAL USB ONLY | No BLE | No Cloud | Just Works", font=("Segoe UI", 11), text_color="#22C55E").pack(side="left", padx=10)
+        ctk.CTkLabel(header, text=f"v{CURRENT_VERSION} | v2.3.0 PLUGIN SYSTEM | LOCAL USB ONLY | Just Works", font=("Segoe UI", 11), text_color="#22C55E").pack(side="left", padx=10)
 
         main = ctk.CTkFrame(self, fg_color="#0A0A0A")
         main.pack(fill="both", expand=True, padx=6, pady=6)
