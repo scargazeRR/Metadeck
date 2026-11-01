@@ -3,7 +3,6 @@
 ![platform](https://img.shields.io/badge/Windows%2011-0078D6?style=for-the-badge&logo=windows&logoColor=white)
 ![chip](https://img.shields.io/badge/MEGA32U4-ATmega32U4-2ea44f?style=for-the-badge)
 ![license](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
-![Build](https://github.com/scargazeRR/Metadeck/actions/workflows/build.yml/badge.svg?style=for-the-badge)
 ![downloads](https://img.shields.io/github/downloads/scargazeRR/Metadeck/total?color=blue&style=for-the-badge)
 
 [Logo](assets/MetaStreamdeck.png)
