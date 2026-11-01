@@ -1,6 +1,5 @@
 # 🎛️ Metadeck - MEGA32U4 Stream Deck
-
-[version](https://img.shields.io/badge/version-1.3.0-orange?style=for-the-badge)
+![version](https://img.shields.io/badge/version-1.3.0-orange?style=for-the-badge)
 [platform](https://img.shields.io/badge/Windows%2011-0078D6?style=for-the-badge&logo=windows&logoColor=white)
 [chip](https://img.shields.io/badge/MEGA32U4-ATmega32U4-2ea44f?style=for-the-badge)
 [license](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
